@@ -1,0 +1,12 @@
+# Configuração parcial do backend, compartilhada pelas stacks deste repositório.
+#
+# O scripts/up.sh GERA o backend.hcl real depois de criar o bucket — copie este
+# exemplo só se for rodar as stacks à mão:
+#
+#   terraform -chdir=network init -backend-config=../backend.hcl
+#
+# A chave (key) de cada stack está no próprio bloco `backend` dela, com o
+# prefixo k8s/. O bucket é compartilhado com os repositórios do banco e da
+# Lambda, que usam os prefixos db/ e lambda/.
+bucket = "autopecas-tfstate-<id-da-conta>"
+region = "us-east-1"

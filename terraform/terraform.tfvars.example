@@ -1,0 +1,29 @@
+# Valores compartilhados pelas stacks network e cluster.
+#
+# O scripts/up.sh GERA o terraform.tfvars real — copie este exemplo só se for
+# rodar as stacks à mão:
+#
+#   terraform -chdir=cluster apply -var-file=../terraform.tfvars
+#
+# Um único arquivo para as duas stacks em vez de um por stack: `project_name` e
+# `aws_region` PRECISAM ser idênticos nas duas — é por eles que os recursos se
+# encontram.
+
+# ─── Identidade (precisa ser igual nas duas stacks) ─────────────────────────
+aws_region   = "us-east-1"
+project_name = "autopecas"
+
+# ─── Onde está o state da rede (o cluster lê por terraform_remote_state) ────
+state_bucket = "autopecas-tfstate-<id-da-conta>"
+
+# ─── Learner Lab ────────────────────────────────────────────────────────────
+# ARN do LabRole. Com ele, o cluster usa este papel e não cria nenhum.
+# existing_role_arn = "arn:aws:iam::<id-da-conta>:role/LabRole"
+
+# ─── Acesso administrativo ao cluster, além de quem roda o apply ────────────
+cluster_admin_role_arns = []
+
+# ─── Dimensionamento (opcional — os padrões estão nas variables.tf) ─────────
+# node_instance_type = "t3.medium"   # a conta do porquê está em cluster/nodes.tf
+# node_min_size      = 2
+# node_max_size      = 4

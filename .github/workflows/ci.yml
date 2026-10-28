@@ -1,0 +1,70 @@
+# =============================================================================
+# CI — validação estática, sem tocar em nuvem nenhuma.
+#
+# Nenhum passo aqui precisa de credencial da AWS, e isso é de propósito: este
+# workflow roda em pull request de qualquer origem, inclusive de fork. Um
+# workflow que roda em PR e tem credencial é um caminho de exfiltração.
+#
+# `terraform validate` pega o que mais acontece ao escrever estas stacks:
+# referência a output que não existe, atributo com nome errado, tipo trocado.
+# O que ele NÃO pega é se o recurso será aceito pela API da AWS — isso só o
+# apply descobre, e ele roda no workflow de CD.
+# =============================================================================
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, homologacao]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: Validar ${{ matrix.stack }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Uma stack com erro não esconde o resultado das outras.
+      fail-fast: false
+      matrix:
+        stack: [bootstrap, network, cluster]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+
+      - name: Formatação
+        working-directory: terraform/${{ matrix.stack }}
+        run: terraform fmt -check -recursive -diff
+
+      - name: Init
+        working-directory: terraform/${{ matrix.stack }}
+        # -backend=false baixa os providers sem configurar o backend S3 — é o
+        # que permite validar sem credencial e sem o nome do bucket.
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        working-directory: terraform/${{ matrix.stack }}
+        run: terraform validate
+
+  scripts:
+    name: Sintaxe dos scripts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash -n
+        # Um erro de sintaxe num script de provisionamento só apareceria no meio
+        # de um apply — depois de recursos pagos já criados.
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh docker/*.sh; do
+            bash -n "$f"
+            echo "ok  $f"
+          done

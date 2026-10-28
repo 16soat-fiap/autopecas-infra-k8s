@@ -1,0 +1,85 @@
+# =============================================================================
+# CD — aplica a infraestrutura na AWS.
+#
+#   push em `homologacao` → aplica (ambiente GitHub "homologacao")
+#   push em `main`        → aplica (ambiente GitHub "producao")
+#
+# As duas branches aplicam a MESMA infraestrutura: um único cluster, onde a
+# aplicação separa homologação e produção por namespace (ver o README, seção
+# "Ambientes"). Duplicar cluster, NAT e NLB por ambiente dobraria o custo, e os
+# créditos do Learner Lab não comportam. O fluxo esperado é: mudança entra em
+# `homologacao`, é aplicada e conferida, e só então vai para `main` por PR.
+#
+# ─── Credenciais: Learner Lab ────────────────────────────────────────────────
+#
+# O Lab não permite criar provedor OIDC nem papel IAM, então não há como o
+# GitHub assumir um papel. O workflow usa as credenciais temporárias da sessão
+# do Lab, em três secrets do repositório:
+#
+#   AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY · AWS_SESSION_TOKEN
+#
+# Elas expiram com a sessão (~4h). A cada sessão nova, os três secrets precisam
+# ser atualizados — e um deploy só funciona com uma sessão ativa. É a limitação
+# do ambiente, registrada no README.
+#
+# ─── Desligado por padrão ────────────────────────────────────────────────────
+#
+# Sem a variável de repositório AWS_CD_HABILITADO = true, o job é ignorado em
+# vez de falhar. Sem os secrets, todo push terminaria em vermelho — e um fork
+# nunca os terá.
+# =============================================================================
+name: CD
+
+on:
+  push:
+    branches: [main, homologacao]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Um apply por vez sobre o mesmo state, e um apply em andamento nunca é
+# cancelado: interrompido no meio, ele deixaria recurso pago criado e fora do
+# state. O lock do S3 protege o state; isto protege o processo.
+concurrency:
+  group: infra-k8s
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Aplicar (${{ github.ref_name }})
+    if: vars.AWS_CD_HABILITADO == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'producao' || 'homologacao' }}
+    timeout-minutes: 60
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      APROVAR_AUTO: sim
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+          # Sem o wrapper: ele embrulha a saída do terraform, e o `output -raw`
+          # que os scripts leem deixaria de ser só o valor.
+          terraform_wrapper: false
+
+      - name: Conferir a sessão do Learner Lab
+        # Falhar aqui, com uma mensagem clara, é melhor que falhar no meio do
+        # apply com um "ExpiredToken" depois de recursos criados.
+        run: |
+          if ! aws sts get-caller-identity --query Arn --output text; then
+            echo "::error::Credencial inválida ou expirada. Inicie uma sessão no Learner Lab e atualize os secrets AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY e AWS_SESSION_TOKEN."
+            exit 1
+          fi
+
+      - name: Aplicar bootstrap, rede e cluster
+        # O runner já traz AWS CLI e kubectl; com o Terraform instalado acima,
+        # os scripts usam os binários locais e não precisam de Docker.
+        run: bash scripts/up.sh

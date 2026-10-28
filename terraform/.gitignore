@@ -1,0 +1,23 @@
+# O state contém, em texto claro, tudo que foi provisionado. O state "de
+# verdade" fica no S3 cifrado; o que aparecer aqui são cópias locais.
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+
+# .terraform.lock.hcl É versionado, de propósito: é o que faz o pipeline usar
+# exatamente as versões de provider que foram testadas.
+
+# Plano salvo com `plan -out`: carrega os valores das variáveis e do state.
+*.tfplan
+
+# Nome do bucket é específico da conta — ver backend.hcl.example
+backend.hcl
+
+# Valores locais — ver terraform.tfvars.example
+terraform.tfvars
+*.auto.tfvars
+
+override.tf
+override.tf.json
+*_override.tf
