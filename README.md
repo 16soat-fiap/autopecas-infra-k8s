@@ -195,6 +195,35 @@ em *suporte estendido*, e a taxa do control plane fica ~6 vezes maior, sem
 nenhum aviso no `plan`. Por isso a versão é fixada em `cluster/variables.tf`,
 com a data de fim de suporte documentada.
 
+## Se a conexão cair no meio de um apply
+
+Aconteceu durante a validação deste repositório, e é provável no Lab: sessões
+de 4 horas e applies de ~15 minutos. Os sintomas são `Failed to persist state
+to backend` e `Error releasing the state lock`. Duas coisas ficam para trás:
+
+- **o state real** fica numa cópia local de emergência,
+  `terraform/<stack>/errored.tfstate` — é o único registro completo do que foi
+  criado. **Não apague esse arquivo.**
+- **o lock** fica preso no bucket (`k8s/<stack>/terraform.tfstate.tflock`).
+
+Com a conexão (ou uma sessão nova do Lab) de volta, e confirmado que nenhum
+outro apply está rodando:
+
+```bash
+cd terraform/<stack>
+terraform init -reconfigure -backend-config=../backend.hcl
+
+# o ID está no conteúdo do .tflock
+aws s3 cp s3://<bucket>/k8s/<stack>/terraform.tfstate.tflock -
+terraform force-unlock <ID>
+
+terraform state push errored.tfstate   # devolve o state completo ao S3
+```
+
+Depois disso, `./scripts/up.sh` retoma de onde parou. Um recurso cuja criação
+foi interrompida aparece como `tainted` e é recriado — é o comportamento
+correto, porque o Terraform não confia num recurso que não viu terminar.
+
 ## Limitações conhecidas
 
 - **No Lab, o Cluster Autoscaler usa a credencial do nó.** O `LabRole` não
