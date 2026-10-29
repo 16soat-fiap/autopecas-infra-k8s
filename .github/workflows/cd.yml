@@ -59,6 +59,8 @@ jobs:
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       APROVAR_AUTO: sim
+      # Opcional: com ela, o up.sh instala a integração do New Relic no cluster.
+      NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
 
     steps:
       - uses: actions/checkout@v4

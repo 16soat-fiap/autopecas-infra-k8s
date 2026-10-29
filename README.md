@@ -57,7 +57,8 @@ porta de entrada — com um Ingress público, ele seria contornável.
 terraform/
   bootstrap/   ECR da imagem da aplicação (e papel OIDC do GitHub, fora do Lab)
   network/     VPC, subnets, NAT Gateway, security groups, endpoint S3
-  cluster/     EKS, node group, Cluster Autoscaler, metrics-server, NLB, VPC Link
+  cluster/     EKS, node group, Cluster Autoscaler, metrics-server, NLB, VPC Link,
+               integração do New Relic (opcional)
 scripts/
   up.sh        cria o bucket de state e aplica as stacks, na ordem
   down.sh      destrói na ordem inversa
@@ -71,7 +72,8 @@ docker/
 ## Tecnologias
 
 Terraform 1.10 · AWS (EKS 1.35, EC2, VPC, NLB, API Gateway VPC Link, ECR, S3) ·
-Helm (Cluster Autoscaler 1.35, metrics-server) · GitHub Actions · Docker · Bash.
+Helm (Cluster Autoscaler 1.35, metrics-server, New Relic `nri-bundle`) · GitHub
+Actions · Docker · Bash.
 
 ## Como executar
 
@@ -97,7 +99,8 @@ Windows, use Git Bash ou WSL.
    ```
 
    O script detecta o Lab sozinho, pela existência do `LabRole`, e usa esse
-   papel no lugar dos que criaria.
+   papel no lugar dos que criaria. Com `NEW_RELIC_LICENSE_KEY` exportada, o
+   cluster também recebe o monitoramento (ver [Monitoramento](#monitoramento)).
 
 3. Ao terminar, o script imprime os valores que os repositórios do **banco** e
    da **Lambda** precisam receber (VPC, subnets, security group, VPC Link).
@@ -134,6 +137,7 @@ A `main` é protegida: só recebe mudança por pull request.
 | Secret | `AWS_ACCESS_KEY_ID` | da sessão do Lab |
 | Secret | `AWS_SECRET_ACCESS_KEY` | da sessão do Lab |
 | Secret | `AWS_SESSION_TOKEN` | da sessão do Lab |
+| Secret | `NEW_RELIC_LICENSE_KEY` | opcional: license key do New Relic ([Monitoramento](#monitoramento)) |
 
 O Learner Lab não permite criar provedor OIDC, então o GitHub não consegue
 assumir um papel: usa as credenciais da sessão, que **expiram em ~4 horas**. A
@@ -177,6 +181,32 @@ aviso deste lado: trate-os como API.
 
 Testado no Learner Lab: com pods que não cabiam em 2 nós, o autoscaler subiu um
 terceiro, que entrou `Ready` e foi registrado sozinho no NLB.
+
+## Monitoramento
+
+Com `NEW_RELIC_LICENSE_KEY` definida, o `up.sh` instala no cluster a integração
+do New Relic com o Kubernetes (`terraform/cluster/newrelic.tf`, chart
+`nri-bundle`). É a parte "consumo de recursos do Kubernetes" do monitoramento;
+o resto (APM, logs, eventos de negócio, dashboards e alertas) fica no
+repositório da aplicação.
+
+| Componente | Entrega |
+|---|---|
+| `newrelic-infrastructure` | CPU, memória, disco e rede por nó, pod e container |
+| `kube-state-metrics` | Réplicas de Deployments e do HPA, reinícios de container |
+| `nri-kube-events` | Eventos do cluster: scale up do HPA, OOMKilled, pod Pending, nó novo |
+| `nri-metadata-injection` | Liga o APM da aplicação ao pod onde ela roda |
+
+Os logs **não** são coletados por aqui: o agente Java da aplicação já os envia
+ligados ao trace, e um coletor por nó duplicaria a ingestão. A coleta roda em
+`lowDataMode` (a cada 30 s), metade do volume e resolução suficiente para ver o
+HPA reagir.
+
+A license key **não** passa pelo Terraform, onde ficaria no state: o chart
+recebe só o nome do Secret `newrelic/newrelic-license`, que o `up.sh` cria
+depois do apply, por entrada padrão do `kubectl`. Sem a variável, nada do New
+Relic é instalado. No CD, o secret do repositório `NEW_RELIC_LICENSE_KEY`
+(opcional) faz o mesmo papel.
 
 ## Custo
 
