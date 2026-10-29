@@ -271,7 +271,8 @@ VPC_ID="$(tf_output network vpc_id)"
 SUBNETS="$(tf_stack network output -json private_subnet_ids 2>/dev/null | tr -d '\r\n ' || true)"
 SG_APP="$(tf_output network application_security_group_id)"
 VPC_LINK="$(tf_output cluster vpc_link_id)"
-LISTENER="$(tf_output cluster api_listener_arn)"
+LISTENERS="$(tf_stack cluster output -json listener_arns 2>/dev/null | tr -d '\r' || true)"
+listener_de() { printf '%s' "$LISTENERS" | sed -n "s/.*\"$1\" *: *\"\([^\"]*\)\".*/\1/p"; }
 
 titulo "Infraestrutura pronta"
 cat <<EOF
@@ -287,7 +288,8 @@ cat <<EOF
 
   Para o repositório autopecas-lambda-auth (integração privada):
     vpc_link_id                     = "${VPC_LINK}"
-    api_listener_arn                = "${LISTENER}"
+    listener (stage producao)       = "$(listener_de producao)"
+    listener (stage homologacao)    = "$(listener_de homologacao)"
     lambda_subnet_ids               = ${SUBNETS}
 
   Para derrubar e parar de pagar:

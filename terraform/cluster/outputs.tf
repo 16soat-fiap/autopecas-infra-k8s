@@ -35,18 +35,17 @@ output "nlb_dns_name" {
 
 output "listener_arns" {
   description = <<-EOT
-    ARN do listener de cada serviço, indexado pela chave do mapa `node_ports`.
+    ARN do listener da API de cada ambiente, indexado pela chave do mapa
+    `node_ports` (`producao`, `homologacao`).
 
     É o que o API Gateway (repositório autopecas-lambda-auth) integra: uma
     integração HTTP privada aponta para um ARN de listener, não para o
-    balanceador.
+    balanceador. O stage de cada ambiente usa o seu:
+
+      listener_arns["producao"]     → stage producao
+      listener_arns["homologacao"]  → stage homologacao
   EOT
   value       = { for k, v in aws_lb_listener.services : k => v.arn }
-}
-
-output "api_listener_arn" {
-  description = "ARN do listener da API no NLB — o `integration_uri` das rotas da aplicação no API Gateway."
-  value       = aws_lb_listener.services["api"].arn
 }
 
 output "vpc_link_id" {

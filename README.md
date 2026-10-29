@@ -32,7 +32,7 @@ flowchart LR
   subgraph VPC [VPC 10.0.0.0/16 — este repositório]
     subgraph PRIV [Subnets privadas, 2 AZs]
       VL --> NLB[NLB interno<br/>sem IP público]
-      NLB -->|NodePort 30080| N[Nós EKS<br/>2 a 4 × t3.medium]
+      NLB -->|NodePort 30080 produção<br/>30081 homologação| N[Nós EKS<br/>2 a 4 × t3.medium]
       N --> P[Pods da API<br/>HPA 2 a 10]
       L --> DB[(RDS PostgreSQL<br/>repo infra-db)]
       P --> DB
@@ -162,7 +162,7 @@ prefixo de chave: `k8s/` (este), `db/<ambiente>/` e `lambda/...`.
 | `private_subnet_ids` | network | banco (`subnet_ids`), Lambda (`lambda_subnet_ids`) |
 | `application_security_group_id` | network | banco (`application_security_group_ids`) |
 | `vpc_link_id` | cluster | API Gateway: `connection_id` das rotas da aplicação |
-| `api_listener_arn` | cluster | API Gateway: `integration_uri` das rotas da aplicação |
+| `listener_arns` | cluster | API Gateway: `integration_uri` das rotas da aplicação — `["producao"]` no stage de produção, `["homologacao"]` no de homologação |
 | `ecr_repository_url` | bootstrap | pipeline da aplicação (`docker push`) |
 
 Remover ou renomear um desses outputs quebra o outro repositório sem nenhum
