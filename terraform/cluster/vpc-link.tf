@@ -4,13 +4,14 @@
 #
 # O gateway em si mora no repositório autopecas-lambda-auth, junto da Lambda
 # que emite os tokens. Este repositório entrega a ele a outra ponta: o VPC Link
-# e o ARN do listener do NLB (outputs `vpc_link_id` e `api_listener_arn`). Com
-# isso, a integração das rotas da aplicação é
+# e o ARN do listener de cada ambiente no NLB (outputs `vpc_link_id` e
+# `listener_arns`). Com isso, a integração das rotas da aplicação, no stage de
+# um ambiente, é
 #
 #     integration_type = "HTTP_PROXY"
 #     connection_type  = "VPC_LINK"
 #     connection_id    = <vpc_link_id>
-#     integration_uri  = <api_listener_arn>
+#     integration_uri  = <listener_arns[ambiente]>
 #
 # e o cluster continua sem NENHUMA entrada pública — sem ela, o gateway teria de
 # apontar para uma URL pública da aplicação, e passaria a ser contornável.

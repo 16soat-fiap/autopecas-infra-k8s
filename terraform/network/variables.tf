@@ -62,11 +62,11 @@ variable "vpc_cidr" {
 
 variable "app_node_port" {
   description = <<-EOT
-    NodePort do Service da API — o mesmo 30080 do ambiente kind e dos manifestos
-    do repositório da aplicação (infra/k8s/aws/30-app-deployment.yaml).
+    NodePort da API em PRODUÇÃO — o mesmo 30080 do ambiente kind e do deploy do
+    repositório da aplicação (infra/scripts/deploy.sh).
 
-    É aqui que o NLB entrega o tráfego. Mudar este valor exige mudar o Service
-    nos manifestos, senão o target group fica permanentemente unhealthy.
+    É aqui que o NLB entrega o tráfego. Mudar este valor exige mudar o deploy da
+    aplicação, senão o target group fica permanentemente unhealthy.
   EOT
   type        = number
   default     = 30080
@@ -74,5 +74,16 @@ variable "app_node_port" {
   validation {
     condition     = var.app_node_port >= 30000 && var.app_node_port <= 32767
     error_message = "app_node_port deve estar na faixa de NodePort do Kubernetes (30000-32767)."
+  }
+}
+
+variable "app_node_port_homologacao" {
+  description = "NodePort da API em HOMOLOGAÇÃO. Mesmas regras de app_node_port, e precisa ser diferente dele: NodePort vale para o cluster inteiro."
+  type        = number
+  default     = 30081
+
+  validation {
+    condition     = var.app_node_port_homologacao >= 30000 && var.app_node_port_homologacao <= 32767
+    error_message = "app_node_port_homologacao deve estar na faixa de NodePort do Kubernetes (30000-32767)."
   }
 }

@@ -159,3 +159,19 @@ variable "cluster_autoscaler_chart_version" {
   type        = string
   default     = "9.59.0"
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Monitoramento (New Relic)
+# ─────────────────────────────────────────────────────────────────────────────
+
+variable "newrelic_habilitado" {
+  description = "Instala a integração do New Relic com o Kubernetes. O up.sh liga quando NEW_RELIC_LICENSE_KEY está definida."
+  type        = bool
+  default     = false
+}
+
+variable "newrelic_chart_version" {
+  description = "Versão do chart nri-bundle do New Relic."
+  type        = string
+  default     = "8.0.40"
+}

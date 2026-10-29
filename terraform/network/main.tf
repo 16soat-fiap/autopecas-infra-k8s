@@ -33,18 +33,28 @@ locals {
   # as portas por conta própria, a divergência apareceria só como target group
   # permanentemente unhealthy, que é um sintoma sem relação óbvia com a causa.
   #
-  # Só a API: a autenticação é a Lambda do repositório autopecas-lambda-auth,
-  # atendida direto pelo API Gateway, sem passar pelo cluster. Acrescentar um
-  # serviço exposto é acrescentar uma entrada aqui.
+  # A API, uma vez por ambiente. Homologação e produção dividem o cluster, cada
+  # uma no seu namespace — e NodePort vale para o cluster inteiro, então cada
+  # ambiente precisa do seu, com o seu listener no NLB. O stage de cada
+  # ambiente no API Gateway (repositório autopecas-lambda-auth) aponta para o
+  # listener correspondente.
+  #
+  # A autenticação não passa por aqui: é a Lambda, atendida direto pelo API
+  # Gateway, sem tocar no cluster.
   #
   # `health_path` é o endpoint que o NLB consulta. Precisa ser público — está no
   # HEALTH_WHITELIST do SecurityConfig da aplicação. Health check autenticado
   # deixaria todos os alvos unhealthy para sempre.
   # ───────────────────────────────────────────────────────────────────────────
   node_ports = {
-    api = {
+    producao = {
       listener_port = 80
       node_port     = var.app_node_port
+      health_path   = "/actuator/health/readiness"
+    }
+    homologacao = {
+      listener_port = 81
+      node_port     = var.app_node_port_homologacao
       health_path   = "/actuator/health/readiness"
     }
   }

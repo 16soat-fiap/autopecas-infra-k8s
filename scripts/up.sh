@@ -24,6 +24,11 @@
 # de um bucket da conta de quem rodou — exatamente a parte que não pode vir no
 # repositório.
 #
+# Monitoramento: com NEW_RELIC_LICENSE_KEY exportada, o cluster recebe a
+# integração do New Relic (terraform/cluster/newrelic.tf). A key vira um Secret
+# do Kubernetes criado aqui, por entrada padrão — nunca passa pelo state do
+# Terraform nem pela linha de comando. Sem a variável, nada de New Relic.
+#
 # Tempo: ~15 minutos do zero, quase tudo no cluster (o control plane do EKS
 # leva ~11 min e o node group ~2).
 #
@@ -226,6 +231,11 @@ if [ -n "$PAPEL_EXISTENTE" ]; then
   PAPEL_TF="existing_role_arn = \"${PAPEL_EXISTENTE}\""
 fi
 
+NEWRELIC_HABILITADO=false
+if [ -n "${NEW_RELIC_LICENSE_KEY:-}" ]; then
+  NEWRELIC_HABILITADO=true
+fi
+
 cat > "${REPO_ROOT}/${TF_SUBDIR}/terraform.tfvars" <<EOF
 # GERADO por scripts/up.sh — não versionado, não edite à mão.
 #
@@ -239,6 +249,9 @@ ${ADMINS_TF}
 
 # Papel IAM pronto (Learner Lab), usado no lugar dos que o cluster criaria.
 ${PAPEL_TF}
+
+# Integração do New Relic: ligada quando NEW_RELIC_LICENSE_KEY está definida.
+newrelic_habilitado = ${NEWRELIC_HABILITADO}
 EOF
 ok "terraform.tfvars escrito"
 
@@ -265,13 +278,35 @@ if [ -n "$CLUSTER" ]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# License key do New Relic — o Secret que o chart nri-bundle espera pelo nome.
+# Por entrada padrão do kubectl, como as senhas no deploy da aplicação: a key não
+# aparece na lista de processos nem no state do Terraform. Reaplicar com a mesma
+# key não muda nada; com outra, os pods do New Relic pegam a nova ao reiniciar.
+# ─────────────────────────────────────────────────────────────────────────────
+if [ -n "$CLUSTER" ] && [ "$NEWRELIC_HABILITADO" = "true" ]; then
+  titulo "New Relic"
+  kubectl_ apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: newrelic-license
+  namespace: newrelic
+type: Opaque
+data:
+  license: $(printf '%s' "$NEW_RELIC_LICENSE_KEY" | base64 | tr -d '\r\n')
+EOF
+  ok "Integração com o Kubernetes instalada; license key no Secret newrelic/newrelic-license"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Resumo — o que os outros repositórios do projeto precisam receber daqui.
 # ─────────────────────────────────────────────────────────────────────────────
 VPC_ID="$(tf_output network vpc_id)"
 SUBNETS="$(tf_stack network output -json private_subnet_ids 2>/dev/null | tr -d '\r\n ' || true)"
 SG_APP="$(tf_output network application_security_group_id)"
 VPC_LINK="$(tf_output cluster vpc_link_id)"
-LISTENER="$(tf_output cluster api_listener_arn)"
+LISTENERS="$(tf_stack cluster output -json listener_arns 2>/dev/null | tr -d '\r' || true)"
+listener_de() { printf '%s' "$LISTENERS" | sed -n "s/.*\"$1\" *: *\"\([^\"]*\)\".*/\1/p"; }
 
 titulo "Infraestrutura pronta"
 cat <<EOF
@@ -287,7 +322,8 @@ cat <<EOF
 
   Para o repositório autopecas-lambda-auth (integração privada):
     vpc_link_id                     = "${VPC_LINK}"
-    api_listener_arn                = "${LISTENER}"
+    listener (stage producao)       = "$(listener_de producao)"
+    listener (stage homologacao)    = "$(listener_de homologacao)"
     lambda_subnet_ids               = ${SUBNETS}
 
   Para derrubar e parar de pagar:
