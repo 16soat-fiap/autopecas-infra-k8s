@@ -1,9 +1,11 @@
 # autopecas-infra-k8s
 
+## Propósito
+
 Infraestrutura Kubernetes do sistema de oficina mecânica (Tech Challenge FIAP
 16SOAT, Fase 3): rede, cluster **Amazon EKS** com escalabilidade em dois níveis
 e a ponte privada (**NLB interno + VPC Link**) por onde o API Gateway alcança a
-aplicação — sem que o cluster tenha nenhuma entrada pública.
+aplicação — sem ingresso público para a aplicação.
 
 Provisionado inteiramente por **Terraform**, com deploy automático por GitHub
 Actions. Feito para rodar no **AWS Academy Learner Lab**, e funciona também numa
@@ -15,25 +17,24 @@ conta AWS comum.
 |---|---|
 | [`autopecas-lambda-auth`](https://github.com/16soat-fiap/autopecas-lambda-auth) | Lambda de autenticação por CPF/CNPJ (emite o JWT) e o API Gateway |
 | **`autopecas-infra-k8s`** (este) | Rede, cluster EKS, autoscaling, NLB interno, VPC Link, ECR |
-| [`autopecas-infra-db-teste`](https://github.com/16soat-fiap/autopecas-infra-db-teste) | RDS PostgreSQL gerenciado e usuários restritos |
+| [`autopecas-infra-db`](https://github.com/16soat-fiap/autopecas-infra-db) | RDS PostgreSQL gerenciado e usuários restritos |
 | [`16SOAT-TechChallenge1`](https://github.com/16soat-fiap/16SOAT-TechChallenge1) | Aplicação Spring Boot e seus manifestos Kubernetes |
 
-Swagger e endpoints da API: ver o repositório da aplicação. Em execução, o
-Swagger fica em `<URL do API Gateway>/swagger-ui.html`.
+Veja os links e o procedimento de acesso em [Documentação das APIs](#documentação-das-apis).
 
 ## Arquitetura
 
 ```mermaid
 flowchart LR
   C[Cliente] -->|HTTPS| G[API Gateway<br/>repo lambda-auth]
-  G -->|POST /auth| L[Lambda de autenticação<br/>repo lambda-auth]
+  G -->|POST /auth ou /auth/funcionarios| L[Lambda de autenticação<br/>repo lambda-auth]
   G -->|/api/* com JWT válido| VL[VPC Link]
 
   subgraph VPC [VPC 10.0.0.0/16 — este repositório]
-    subgraph PRIV [Subnets privadas, 2 AZs]
+    subgraph PRIV ["Subnets privadas, 2 AZs"]
       VL --> NLB[NLB interno<br/>sem IP público]
       NLB -->|NodePort 30080 produção<br/>30081 homologação| N[Nós EKS<br/>2 a 4 × t3.medium]
-      N --> P[Pods da API<br/>HPA 2 a 10]
+      N --> P[Pods da API<br/>HPA: homologação 1 a 3<br/>produção 2 a 8]
       L --> DB[(RDS PostgreSQL<br/>repo infra-db)]
       P --> DB
     end
@@ -50,6 +51,24 @@ flowchart LR
 Link só sai para o NLB, o NLB só entrega no NodePort dos nós, e o banco só
 aceita conexão vinda dos nós e da Lambda. É isso que torna o API Gateway a única
 porta de entrada — com um Ingress público, ele seria contornável.
+
+## Documentação das APIs
+
+Este repositório provisiona infraestrutura e não oferece API HTTP própria. As APIs de negócio pertencem à [aplicação principal](https://github.com/16soat-fiap/16SOAT-TechChallenge1).
+
+- [Swagger UI da aplicação](http://localhost:8080/swagger-ui.html).
+- [Especificação OpenAPI](http://localhost:8080/v3/api-docs).
+- [Autenticação e coleção Postman da Lambda](https://github.com/16soat-fiap/autopecas-lambda-auth#readme).
+
+Os endereços localhost exigem a aplicação em execução na porta 8080. Para acessar o Swagger de uma aplicação já publicada no EKS, com kubectl e o contexto do cluster configurados:
+
+~~~bash
+kubectl -n homologacao port-forward service/autopecas-api 8080:8080
+~~~
+
+Mantenha o comando aberto e acesse o Swagger pelo link local. Para produção, substitua o namespace por producao.
+
+O catálogo atual do Gateway não publica /swagger-ui.html nem /v3/api-docs; por isso não se anuncia um endereço externo de Swagger que não esteja roteado.
 
 ## Estrutura
 
@@ -176,8 +195,12 @@ aviso deste lado: trate-os como API.
 
 | Nível | Componente | Faixa | Sinal |
 |---|---|---|---|
-| Pods | HPA (manifestos da aplicação) | 2 → 10 | CPU a 70% |
+| Pods de homologação | HPA (namespace homologacao) | 1 → 3 | CPU 70% / memória 85% |
+| Pods de produção | HPA (namespace producao) | 2 → 8 | CPU 70% / memória 85% |
 | Nós | Cluster Autoscaler | 2 → 4 `t3.medium` | pods `Pending` por falta de espaço |
+
+Os limites dos pods são definidos em infra/scripts/deploy.sh da aplicação;
+o cluster compartilha a capacidade entre os dois namespaces.
 
 Testado no Learner Lab: com pods que não cabiam em 2 nós, o autoscaler subiu um
 terceiro, que entrou `Ready` e foi registrado sozinho no NLB.
@@ -240,12 +263,12 @@ Com a conexão (ou uma sessão nova do Lab) de volta, e confirmado que nenhum
 outro apply está rodando:
 
 ```bash
-cd terraform/<stack>
+cd terraform/cluster  # ou terraform/network, conforme o recurso a desbloquear
 terraform init -reconfigure -backend-config=../backend.hcl
 
 # o ID está no conteúdo do .tflock
 aws s3 cp s3://<bucket>/k8s/<stack>/terraform.tfstate.tflock -
-terraform force-unlock <ID>
+terraform force-unlock "ID_DO_LOCK"
 
 terraform state push errored.tfstate   # devolve o state completo ao S3
 ```
